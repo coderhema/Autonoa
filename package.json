@@ -1,11 +1,16 @@
 {
   "name": "moltbook-syndicate",
   "version": "1.0.0",
-  "description": "Production-grade BNB Chain AI Trading Agent for BNB Hack.",
+  "description": "Production-grade AI Trading Agent for BNB Hack: AI Trading Agent Edition.",
   "main": "agent.ts",
   "dependencies": {
-    "@bnb-chain/bnb-ai-agent-sdk": "^1.0.0",
-    "@trustwallet/agent-kit": "^1.0.0",
-    "typescript": "^5.0.0"
+    "@bnb-chain/bnb-ai-agent-sdk": "latest",
+    "@trustwallet/agent-kit": "latest",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.1"
+  },
+  "scripts": {
+    "start": "ts-node agent.ts",
+    "build": "tsc"
   }
 }
