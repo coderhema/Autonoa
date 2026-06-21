@@ -1,16 +1,18 @@
 {
-  "name": "moltbook-syndicate",
+  "name": "autonoa",
   "version": "1.0.0",
-  "description": "Production-grade AI Trading Agent for BNB Hack: AI Trading Agent Edition.",
-  "main": "agent.ts",
+  "description": "Autonoa — autonomous AI trading agent for BNB Chain. CMC intelligence + TWAK execution + BNB SDK identity.",
+  "main": "src/index.ts",
   "dependencies": {
-    "@bnb-chain/bnb-ai-agent-sdk": "latest",
-    "@trustwallet/agent-kit": "latest",
+    "dotenv": "^16.4.7",
     "typescript": "^5.0.0",
     "ts-node": "^10.9.1"
   },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
   "scripts": {
-    "start": "ts-node agent.ts",
+    "start": "ts-node src/index.ts",
     "build": "tsc"
   }
 }
