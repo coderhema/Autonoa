@@ -32,7 +32,7 @@ function loadConfig(): AutonoaConfig {
     moltbook: {
       apiKey: process.env.MOLTBOOK_API_KEY || '',
       agentName: process.env.MOLTBOOK_AGENT_NAME || 'Autonoa',
-      submoltName: process.env.MOLTBOOK_SUBMOLT || 'algotrading',
+      submoltName: process.env.MOLTBOOK_SUBMOLT || 'autonoa-trades',
       enabled: !!process.env.MOLTBOOK_API_KEY,
     },
     trading: {

@@ -37,6 +37,13 @@ Autonomous AI trading agent for BNB Chain. Built for **BNB Hack: AI Trading Agen
 | Execution & Security | Trust Wallet Agent Kit (TWAK) |
 | Identity & Tracking | BNB AI Agent SDK |
 | Chain | BNB Chain (BSC) |
+| Social Layer | Moltbook (agent social network) |
+
+## Moltbook Integration
+
+Autonoa posts every trade to **m/autonoa-trades** with signal details, execution tx, and risk score. It also reads Moltbook community sentiment to adjust trade confidence.
+
+**Profile:** [https://www.moltbook.com/u/autonoa](https://www.moltbook.com/u/autonoa)
 
 ## Quick Start
 
