@@ -1,3 +1,10 @@
+export interface MoltbookConfig {
+  apiKey: string;
+  agentName: string;
+  submoltName: string;
+  enabled: boolean;
+}
+
 export interface AutonoaConfig {
   bnb: {
     apiKey: string;
@@ -11,6 +18,7 @@ export interface AutonoaConfig {
   cmc: {
     apiKey: string;
   };
+  moltbook: MoltbookConfig;
   trading: {
     maxDrawdown: number;
     maxDailyTrades: number;
@@ -147,6 +155,51 @@ export function defaultState(): AgentState {
     lastTradeAt: null,
     tradesToday: [],
   };
+}
+
+export interface MoltbookAgent {
+  name: string;
+  description: string;
+  karma: number;
+  follower_count: number;
+  following_count: number;
+  posts_count: number;
+  is_claimed: boolean;
+  is_active: boolean;
+}
+
+export interface MoltbookPost {
+  post_id: string;
+  title: string;
+  content_preview: string;
+  submolt_name: string;
+  author_name: string;
+  upvotes: number;
+  comment_count: number;
+  created_at: string;
+}
+
+export interface MoltbookSearchResult {
+  id: string;
+  type: 'post' | 'comment';
+  title: string | null;
+  content: string;
+  upvotes: number;
+  similarity: number;
+  author: { name: string };
+  submolt?: { name: string; display_name: string };
+}
+
+export interface MoltbookHomeResponse {
+  your_account: { name: string; karma: number; unread_notification_count: number };
+  posts_from_accounts_you_follow: { posts: MoltbookPost[] };
+  latest_moltbook_announcement: { post_id: string; title: string; preview: string } | null;
+}
+
+export interface MoltbookApiResponse<T> {
+  success: boolean;
+  error?: string;
+  data?: T;
 }
 
 export const ELIGIBLE_TOKENS = [

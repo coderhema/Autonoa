@@ -10,7 +10,10 @@ import type {
   AgentState,
   TWAKRiskScore,
 } from './types';
-import { defaultState, ELIGIBLE_TOKENS } from './types';
+import {
+  defaultState, ELIGIBLE_TOKENS, MoltbookConfig
+} from './types';
+import { MoltbookClient } from './moltbook';
 
 function loadConfig(): AutonoaConfig {
   const cfg: AutonoaConfig = {
@@ -25,6 +28,12 @@ function loadConfig(): AutonoaConfig {
     },
     cmc: {
       apiKey: requireEnv('CMC_API_KEY'),
+    },
+    moltbook: {
+      apiKey: process.env.MOLTBOOK_API_KEY || '',
+      agentName: process.env.MOLTBOOK_AGENT_NAME || 'Autonoa',
+      submoltName: process.env.MOLTBOOK_SUBMOLT || 'algotrading',
+      enabled: !!process.env.MOLTBOOK_API_KEY,
     },
     trading: {
       maxDrawdown: parseFloat(process.env.MAX_DRAWDOWN || '30'),
@@ -49,14 +58,13 @@ function determineSentiment(change24h: number, volumeChange: number): 'bullish' 
   return 'neutral';
 }
 
-async function createTWAK(cfg: AutonoaConfig['trustWallet']): Promise<TWAKInstance> {
+function createTWAK(cfg: AutonoaConfig['trustWallet']): TWAKInstance {
   try {
-    const mod = await import('@trustwallet/agent-kit');
-    const kit = new mod.TrustWalletAgentKit({
+    const mod = require('@trustwallet/agent-kit');
+    return new mod.TrustWalletAgentKit({
       apiKey: cfg.apiKey,
       walletConfig: { type: 'self-custody' },
     }) as unknown as TWAKInstance;
-    return kit;
   } catch {
     console.warn('[Autonoa] @trustwallet/agent-kit not found, using mock adapter');
     return createMockTWAK(cfg);
@@ -90,14 +98,13 @@ function createMockTWAK(cfg: AutonoaConfig['trustWallet']): TWAKInstance {
   };
 }
 
-async function createBNBSDK(cfg: AutonoaConfig['bnb']): Promise<BNBInstance> {
+function createBNBSDK(cfg: AutonoaConfig['bnb']): BNBInstance {
   try {
-    const mod = await import('@bnb-chain/bnb-ai-agent-sdk');
-    const sdk = new mod.BNBAgentSDK({
+    const mod = require('@bnb-chain/bnb-ai-agent-sdk');
+    return new mod.BNBAgentSDK({
       apiKey: cfg.apiKey,
       network: cfg.network,
     }) as unknown as BNBInstance;
-    return sdk;
   } catch {
     console.warn('[Autonoa] @bnb-chain/bnb-ai-agent-sdk not found, using mock adapter');
     return createMockBNBSDKI(cfg);
@@ -130,22 +137,24 @@ export class Autonoa {
   private state: AgentState;
   private twak!: TWAKInstance;
   private bnbSDK!: BNBInstance;
+  private moltbook: MoltbookClient;
   private startedAt: number;
 
   constructor() {
     this.cfg = loadConfig();
     this.state = defaultState();
+    this.moltbook = new MoltbookClient(this.cfg.moltbook);
     this.startedAt = Date.now();
   }
 
   async initialize(): Promise<void> {
     console.log('[Autonoa] Initializing...');
 
-    this.twak = await createTWAK(this.cfg.trustWallet);
+    this.twak = createTWAK(this.cfg.trustWallet);
     this.state.walletAddress = await this.twak.wallet.address();
     this.state.balance = await this.twak.wallet.balance();
 
-    this.bnbSDK = await createBNBSDK(this.cfg.bnb);
+    this.bnbSDK = createBNBSDK(this.cfg.bnb);
     this.state.identity = await this.bnbSDK.identity.register({
       name: 'Autonoa Agent',
       role: 'TradingBot',
@@ -153,7 +162,18 @@ export class Autonoa {
 
     this.state.peakPortfolioValue = parseFloat(this.state.balance);
 
-    console.log(`[Autonoa] Identity: ${this.state.identity.id}`);
+    if (this.moltbook.enabled) {
+      try {
+        const profile = await this.moltbook.getProfile();
+        console.log(`[Autonoa] Moltbook: @${profile.name} (${profile.karma} karma)`);
+      } catch (err) {
+        console.warn(`[Autonoa] Moltbook init failed:`, err);
+      }
+    } else {
+      console.log('[Autonoa] Moltbook: disabled (set MOLTBOOK_API_KEY to enable)');
+    }
+
+    console.log(`[Autonoa] Identity: ${this.state.identity!.id}`);
     console.log(`[Autonoa] Wallet: ${this.state.walletAddress} | Balance: ${this.state.balance}`);
   }
 
@@ -258,6 +278,35 @@ export class Autonoa {
     });
 
     console.log(`[Autonoa] EXECUTED ${signal.symbol} | tx: ${tx.hash} | risk: ${risk.score}`);
+
+    await this.postTradeToMoltbook(signal, tx.hash, risk.score);
+  }
+
+  private async postTradeToMoltbook(signal: CMCSignal, txHash: string, riskScore: number): Promise<void> {
+    if (!this.moltbook.enabled) return;
+
+    const dir = signal.sentiment === 'bullish' ? 'LONG' : 'SHORT';
+    const title = `${dir} ${signal.symbol} @ $${signal.price.toFixed(2)} | confidence ${signal.confidence}%`;
+    const body = [
+      `**Signal:** ${signal.symbol} (${signal.name})`,
+      `**Direction:** ${dir}`,
+      `**Price:** $${signal.price.toFixed(6)}`,
+      `**24h Change:** ${signal.priceChange24h > 0 ? '+' : ''}${signal.priceChange24h.toFixed(2)}%`,
+      `**Volume 24h:** $${(signal.volume24h / 1_000_000).toFixed(1)}M`,
+      `**Confidence:** ${signal.confidence}/100`,
+      `**TWAK Risk:** ${riskScore}/100`,
+      ``,
+      `**TX:** \`${txHash}\``,
+      `**Strategy:** momentum-volume breakout`,
+      `**Chain:** BSC`,
+    ].join('\n');
+
+    try {
+      const postId = await this.moltbook.createPost(title, body);
+      console.log(`[Autonoa] Posted trade to Moltbook: ${postId}`);
+    } catch (err) {
+      console.warn(`[Autonoa] Moltbook post failed:`, err);
+    }
   }
 
   private computeDrawdown(): number {
@@ -280,14 +329,44 @@ export class Autonoa {
     return true;
   }
 
+  private async fetchMoltbookSentiment(): Promise<string | null> {
+    if (!this.moltbook.enabled) return null;
+    try {
+      const results = await this.moltbook.searchSentiment('BNB Chain trading market sentiment');
+      if (results.length === 0) return null;
+
+      const bullish = results.filter((r) => r.similarity > 0.6).length;
+      const total = results.length;
+      return bullish / total > 0.5 ? 'bullish' : 'bearish';
+    } catch {
+      return null;
+    }
+  }
+
   private async tick(): Promise<void> {
     if (this.state.isPaused) {
       console.log('[Autonoa] Paused, skipping tick');
       return;
     }
 
+    const mbSentiment = await this.fetchMoltbookSentiment();
+    if (mbSentiment) {
+      console.log(`[Autonoa] Moltbook sentiment: ${mbSentiment}`);
+    }
+
     const signals = await this.fetchCMCSignals();
-    const targets = signals.filter(
+
+    const enriched = signals.map((s) => {
+      if (mbSentiment && s.sentiment === mbSentiment) {
+        return { ...s, confidence: Math.min(s.confidence + 10, 99) };
+      }
+      if (mbSentiment && s.sentiment !== mbSentiment) {
+        return { ...s, confidence: Math.max(s.confidence - 10, 0) };
+      }
+      return s;
+    });
+
+    const targets = enriched.filter(
       (s) => s.sentiment === 'bullish' && s.confidence > 50 && s.volumeChange24h > 10,
     );
 
